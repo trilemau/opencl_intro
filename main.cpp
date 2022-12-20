@@ -51,11 +51,11 @@ __kernel void hello(__global char* data)
     std::string array = R"(
 __kernel void array(__global int* data, __global int* output)
 {
-    output[get_global_id(0)] = data[get_globa_id(0)] * 2;
+    output[get_global_id(0)] = data[get_global_id(0)] * 2;
 }
 )";
 
-    cl::Program::Sources sources(1, std::make_pair(hello.c_str(), hello.size() + 1));
+    cl::Program::Sources sources(1, std::make_pair(array.c_str(), array.size() + 1));
     cl::Context context(device);
     cl::Program program(context, sources);
 
@@ -63,23 +63,36 @@ __kernel void array(__global int* data, __global int* output)
 
     std::cout << "build=" << error << "\n";
 
-    std::string buffer;
-    buffer.resize(5);
-    cl::Buffer memBuf(context, CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY, sizeof(buffer));
-    cl::Kernel kernel(program, "hello", &error);
+    std::vector<int> data{ 1, 2, 3, 4, 5 };
+    cl::Buffer data_buffer(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR | CL_MEM_HOST_NO_ACCESS, sizeof(int) * data.size(), data.data(), &error);
+    std::cout << "data_buffer=" << error << "\n";
+
+    std::vector<int> output;
+    output.resize(data.size());
+    cl::Buffer output_buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR | CL_MEM_HOST_READ_ONLY, sizeof(int) * output.size(), output.data(), &error);
+    std::cout << "output_buffer=" << error << "\n";
+
+    cl::Kernel kernel(program, "array", &error);
     std::cout << "kernel=" << error << "\n";
 
-    error = kernel.setArg(0, memBuf);
-    std::cout << "kernel_setArg=" << error << "\n";
+    error = kernel.setArg(0, data_buffer);
+    std::cout << "kernel_setArg1=" << error << "\n";
+    error = kernel.setArg(1, output_buffer);
+    std::cout << "kernel_setArg2=" << error << "\n";
 
     cl::CommandQueue queue(context, device);
-    error = queue.enqueueTask(kernel);
-    std::cout << "enqueueTask=" << error << "\n";
+    error = queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(data.size()));
+    std::cout << "enqueueNDRangeKernel=" << error << "\n";
 
-    error = queue.enqueueReadBuffer(memBuf, CL_TRUE, 0, sizeof(buffer), (void*) buffer.c_str());
-    std::cout << "enqueueReadBuffer=" << error << "\n";
+    queue.enqueueMapBuffer(output_buffer, CL_TRUE, CL_MAP_READ, 0, sizeof(int) * output.size(), {}, {}, &error);
+    std::cout << "enqueueMapBuffer=" << error << "\n";
 
-    std::cout << buffer << "\n";
+    for (auto x : output)
+    {
+        std::cout << x << " ";
+    }
+
+    std::cout << "\n";
 
 	return EXIT_SUCCESS;
 }
